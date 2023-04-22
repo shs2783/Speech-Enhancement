@@ -3,14 +3,12 @@ sys.path.append('models')
 
 import torch
 from utils import show_params
-from models.dcunet import DCUNet
+from models.crn import CRN
 
 if __name__ == '__main__':
-    is_complex = True
-    model = DCUNet('dcunet20', is_complex)
+    model = CRN()
     show_params(model)
     
-    channels = 2 if is_complex else 1
-    x = torch.randn(1, channels, 256, 800)
+    x = torch.randn(1, 1, 100, 161)
     y = model(x)
     print(y.shape)
