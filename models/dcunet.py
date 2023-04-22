@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from conv_stft import ConvSTFT, ConviSTFT
 from complex_nn import ComplexConv2d, ComplexConvTranspose2d, ComplexBatchNorm2d, ComplexLeakyReLU
 from architectures import dcunet_architecture
 
@@ -49,6 +50,7 @@ class Encoder(nn.Module):
         for i in range(len(architecture)):
             out_channels, kernel_size, stride, padding = architecture[i]
             out_channels = out_channels[0] * 2 if is_complex else out_channels[1]
+
             layers += [ConvBlock(in_channels, out_channels, kernel_size, stride=stride, padding=padding, is_complex=is_complex)]
             in_channels = out_channels
 
@@ -71,6 +73,7 @@ class Decoder(nn.Module):
             kernel_size, stride, padding = architecture[-i-1][1:]
             out_channels = architecture[-i-2][0]
             out_channels = out_channels[0] * 2 if is_complex else out_channels[1]
+
             layers += [ConvTransposeBlock(in_channels*2, out_channels, kernel_size, stride=stride, padding=padding, is_complex=is_complex)]
             in_channels = out_channels
 
@@ -78,9 +81,9 @@ class Decoder(nn.Module):
         layers += [ConvTransposeBlock(in_channels*2, mask_channels, kernel_size, stride=stride, padding=padding, is_complex=is_complex, act=False)]
         self.layers = layers
 
-    def forward(self, x, encoder_outputs):
+    def forward(self, x, encoder_outputs=None):
         for layer in self.layers:
-            if encoder_outputs:
+            if encoder_outputs is not None:
                 encoder_output = encoder_outputs.pop()
                 
                 if encoder_output.shape != x.shape:
@@ -93,21 +96,43 @@ class Decoder(nn.Module):
         return x
     
 class DCUNet(nn.Module):
-    def __init__(self, config, is_complex=True) -> None:
+    def __init__(self, config, window_size=512, hop_size=128, fft_size=512, normalize=False, is_complex=True) -> None:
         super().__init__()
         
         architecture = dcunet_architecture[config]
         enc_channels = architecture[0][0][0] * 2 if is_complex else architecture[0][0][1]
         dec_channels = architecture[-1][0][0] * 2 if is_complex else architecture[-1][0][1]
         mask_channels = 2 if is_complex else 1
-        
+
+        self.window_size = window_size
+        self.hop_size = hop_size
+        self.fft_size = fft_size
+        self.normalize = normalize
+
+        self.stft = ConvSTFT(window_size, hop_size, fft_size)
+        self.istft = ConviSTFT(window_size, hop_size, fft_size)
+
         self.first_conv = ConvBlock(in_channels=mask_channels, out_channels=enc_channels, kernel_size=3, padding=1, is_complex=is_complex)
         self.encoder = Encoder(architecture, enc_channels, is_complex)
         self.decoder = Decoder(architecture, dec_channels, mask_channels, is_complex)
         
     def forward(self, x):
-        identity = x
-        
+        ### stft
+        complex_specs = self.stft(x)  # (batch, freq, time)
+
+        real = complex_specs[:, :self.fft_size//2 + 1]
+        imag = complex_specs[:, self.fft_size//2 + 1:]
+        complex_specs = torch.stack([real, imag], dim=1)  # (batch, 2, freq, time)  ## 2 = (real, imag)
+
+        if self.normalize:
+            means = torch.mean(complex_specs, dim=[1, 2, 3], keepdim=True)
+            std = torch.std(complex_specs, dim=[1, 2, 3], keepdim=True)
+            complex_specs = (complex_specs - means) / (std + 1e-8)
+
+        ### processing
+        x = complex_specs
+        identity = complex_specs
+
         x = self.first_conv(x)
         x, encoder_outputs = self.encoder(x)
         x = self.decoder(x, encoder_outputs)
@@ -118,8 +143,15 @@ class DCUNet(nn.Module):
             w_diff = abs(identity.shape[3] - mask.shape[3])
             identity = identity[..., :-h_diff, :-w_diff]
         
-        clean_estimate = identity * mask
-        return clean_estimate
+        clean_estimate_spec = identity * mask
+
+        ### istft
+        batch, complex_channel, freq, time = clean_estimate_spec.shape
+        clean_estimate_spec = clean_estimate_spec.view(batch, complex_channel*freq, time)
+
+        clean_estimate_wav = self.istft(clean_estimate_spec)
+        clean_estimate_wav = torch.clamp_(clean_estimate_wav, -1, 1)
+        return clean_estimate_spec, clean_estimate_wav
 
     def _mask_processing(self, x, eps=1e-8, method='bounded_tanh'):
         if method == 'unbounded':
@@ -130,13 +162,12 @@ class DCUNet(nn.Module):
             mask_mag = torch.sqrt(torch.sum(x**2, dim=1, keepdim=True) + eps)
             mask_phase = x / mask_mag
             mask = mask_mag * mask_phase * torch.tanh(mask_mag)
+
         return mask
 
 if __name__ == '__main__':
-    is_complex = True
-    model = DCUNet('dcunet20', is_complex)
+    model = DCUNet('dcunet20-large', window_size=512, hop_size=256, fft_size=512, is_complex=True)
     
-    channels = 2 if is_complex else 1
-    x = torch.randn(1, channels, 256, 800)
-    y = model(x)
-    print(y.shape)
+    x = torch.rand(2, 32000)
+    clean_estimate_spec, clean_estimate_wav = model(x)
+    print(clean_estimate_wav.shape)

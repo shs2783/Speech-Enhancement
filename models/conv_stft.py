@@ -118,4 +118,4 @@ class ConviSTFT(nn.Module):
         if output_length is not None:
             outputs = outputs[..., :output_length]
 
-        return outputs.squeeze(1).float()
+        return outputs.squeeze(1)
