@@ -100,12 +100,8 @@ class CRN(nn.Module):
         return x
     
 if __name__ == '__main__':
-    window_size = 320
-    hop_size = 80
-    fft_size = 320
-
-    stft = ConvSTFT(window_size, hop_size, fft_size, return_mag_phase=True)
-    istft = ConviSTFT(window_size, hop_size, fft_size)
+    stft = ConvSTFT(window_size=320, hop_size=160, fft_size=320, return_mag_phase=True)
+    istft = ConviSTFT(window_size=320, hop_size=160, fft_size=320)
     model = CRN()
 
     signal = torch.randn(2, 16000)
@@ -118,4 +114,3 @@ if __name__ == '__main__':
     output = output.squeeze(1).transpose(1, 2)  # (batch, freq, time)
     istft_signal = istft(output, phase)
     print(istft_signal.shape)
-    

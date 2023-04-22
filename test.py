@@ -3,7 +3,7 @@ sys.path.append('models')
 
 import torch
 from utils import show_params
-from models.crn import CRN
+from models import CRN
 
 if __name__ == '__main__':
     model = CRN()
