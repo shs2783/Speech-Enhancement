@@ -32,8 +32,8 @@ class ConvTransposeBlock(nn.Module):
 
         if is_complex:
             self.conv_transposed = ComplexConvTranspose2d(in_channels, out_channels, kernel_size, bias=not norm, **kwargs)
-            self.norm = nn.BatchNorm2d(out_channels) if norm else nn.Identity()
-            self.act = nn.LeakyReLU() if act else nn.Identity()
+            self.norm = ComplexBatchNorm2d(out_channels) if norm else nn.Identity()
+            self.act = ComplexLeakyReLU() if act else nn.Identity()
         else:
             self.conv_transposed = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, bias=not norm, **kwargs)
             self.norm = nn.BatchNorm2d(out_channels) if norm else nn.Identity()

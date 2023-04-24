@@ -4,14 +4,11 @@ import numpy as np
 import torch.nn.functional as F
 from scipy.signal import get_window
 
-def init_kernels(win_len, fft_size, win_type='hann', onesided=True, inverse=False):
+def init_kernels(window_size, fft_size, win_type='hann', inverse=False):
     N = fft_size
-    window = get_window(win_type, win_len, fftbins=True)
-
-    if onesided:  # recommand
-        fourier_basis = np.fft.rfft(np.eye(N))[:win_len]
-    else:
-        fourier_basis = np.fft.fft(np.eye(N))[:win_len]
+    
+    window = get_window(win_type, window_size, fftbins=True)
+    fourier_basis = np.fft.rfft(np.eye(N))[:window_size]
 
     real_kernel = np.real(fourier_basis)
     imag_kernel = np.imag(fourier_basis)
@@ -30,21 +27,21 @@ def init_kernels(win_len, fft_size, win_type='hann', onesided=True, inverse=Fals
 
 
 class ConvSTFT(nn.Module):
-    def __init__(self, win_len, hop_size, fft_size=None, win_type='hann', center=True, onesided=True, return_mag_phase=False, fix=True):
+    def __init__(self, window_size, hop_size, fft_size=None, win_type='hann', center=True, return_mag_phase=False, fix=True):
         super(ConvSTFT, self).__init__()
 
         if fft_size is None:
-            self.fft_size = win_len
+            self.fft_size = window_size
         else:
             self.fft_size = fft_size
 
-        kernel, _ = init_kernels(win_len, self.fft_size, win_type, onesided)
+        kernel, _ = init_kernels(window_size, self.fft_size, win_type)
         # self.weight = nn.Parameter(kernel, requires_grad=(not fix))
         self.register_buffer('weight', kernel)
 
         self.fft_size = self.fft_size
         self.hop_size = hop_size
-        self.win_len = win_len
+        self.window_size = window_size
         self.center = center
         self.return_mag_phase = return_mag_phase
         self.pad = self.fft_size // 2
@@ -71,23 +68,23 @@ class ConvSTFT(nn.Module):
 
 
 class ConviSTFT(nn.Module):
-    def __init__(self, win_len, hop_size, fft_size=None, win_type='hann', center=True, onesided=True, fix=True):
+    def __init__(self, window_size, hop_size, fft_size=None, win_type='hann', center=True, fix=True):
         super(ConviSTFT, self).__init__()
 
         if fft_size is None:
-            self.fft_size = win_len
+            self.fft_size = window_size
         else:
             self.fft_size = fft_size
 
-        kernel, window = init_kernels(win_len, self.fft_size, win_type, onesided, inverse=True)
+        kernel, window = init_kernels(window_size, self.fft_size, win_type, inverse=True)
         # self.weight = nn.Parameter(kernel, requires_grad=(not fix))
         self.register_buffer('weight', kernel)
         self.register_buffer('window', window)
-        self.register_buffer('enframe', torch.eye(win_len)[:, None, :])
+        self.register_buffer('enframe', torch.eye(window_size)[:, None, :])
 
         self.fft_size = self.fft_size
         self.hop_size = hop_size
-        self.win_len = win_len
+        self.window_size = window_size
         self.center = center
         self.pad = self.fft_size // 2
 
