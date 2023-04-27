@@ -212,8 +212,12 @@ class DCCRN(nn.Module):
         return mag, phase
 
 if __name__ == '__main__':
-    signal = torch.randn(1, 16000)
-    model = DCCRN('dccrn-CL', window_size=400, hop_size=100, fft_size=512, bidirectional=False, is_complex=True)
+    window_size = 400  # 16000Hz * 0.025s (=25ms) in paper
+    hop_size = 100  # 16000Hz * 0.00625s (=6.25ms) in paper
+    fft_size = 512
+
+    signal = torch.randn(1, 32000)
+    model = DCCRN('dccrn-CL', window_size, hop_size, fft_size, bidirectional=False, is_complex=True)
 
     clean_estimate_spec, clean_estimate_wav = model(signal)
     print(clean_estimate_wav.shape)

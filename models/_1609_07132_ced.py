@@ -133,8 +133,12 @@ class CRCED(nn.Module):
         return x
     
 if __name__ == '__main__':
-    stft = ConvSTFT(win_len=256, hop_size=64, fft_size=256, return_mag_phase=True)
-    istft = ConviSTFT(win_len=256, hop_size=64, fft_size=256)
+    window_size = 256  # 8000Hz * 0.032s (=32ms) in paper
+    hop_size = 64  # 8000Hz * 0.008s (=8ms) in paper
+    fft_size = 256
+
+    stft = ConvSTFT(window_size, hop_size, fft_size, return_mag_phase=True)
+    istft = ConviSTFT(window_size, hop_size, fft_size)
 
     # model = CED()
     # model = RCED('r-ced10')

@@ -137,12 +137,14 @@ class DCUNet(nn.Module):
         x, encoder_outputs = self.encoder(x)
         x = self.decoder(x, encoder_outputs)
         mask = self._mask_processing(x)
-        
-        if identity.shape != mask.shape:
+
+        if identity.shape[2] != mask.shape[2]:
             h_diff = abs(identity.shape[2] - mask.shape[2])
+            identity = identity[:, :, :-h_diff, :]
+        if identity.shape[3] != mask.shape[3]:
             w_diff = abs(identity.shape[3] - mask.shape[3])
-            identity = identity[..., :-h_diff, :-w_diff]
-        
+            identity = identity[:, :, :, :-w_diff]
+
         clean_estimate_spec = identity * mask
 
         ### istft
@@ -166,8 +168,12 @@ class DCUNet(nn.Module):
         return mask
 
 if __name__ == '__main__':
-    model = DCUNet('dcunet20-large', window_size=512, hop_size=256, fft_size=512, is_complex=True)
+    window_size = 1024  # 16000Hz * 0.064s (=64ms) in paper
+    hop_size = 256  # 16000Hz * 0.016s (=16ms) in paper
+    fft_size = 1024  # same as window_size
+
+    model = DCUNet('dcunet20-large', window_size, hop_size, fft_size, is_complex=True)
     
-    x = torch.rand(2, 32000)
+    x = torch.rand(1, 32000)
     clean_estimate_spec, clean_estimate_wav = model(x)
     print(clean_estimate_wav.shape)

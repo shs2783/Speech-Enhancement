@@ -43,7 +43,7 @@ class ConvTransposeBlock(nn.Module):
 class Encoder(nn.Module):
     def __init__(self, in_channels=1) -> None:
         super().__init__()
-        
+
         encoder_channels = [16, 32, 64, 128, 256]
         self.layers = nn.ModuleList()
         for out_channels in encoder_channels:
@@ -100,11 +100,15 @@ class CRN(nn.Module):
         return x
     
 if __name__ == '__main__':
-    stft = ConvSTFT(window_size=320, hop_size=160, fft_size=320, return_mag_phase=True)
-    istft = ConviSTFT(window_size=320, hop_size=160, fft_size=320)
+    window_size = 320
+    hop_size = 160
+    fft_size = 320  # inference from input size frequency 161
+
+    stft = ConvSTFT(window_size, hop_size, fft_size, return_mag_phase=True)
+    istft = ConviSTFT(window_size, hop_size, fft_size)
     model = CRN()
 
-    signal = torch.randn(2, 16000)
+    signal = torch.randn(1, 32000)
     mag, phase = stft(signal)  # (batch, freq, time)
     mag = mag.transpose(1, 2).unsqueeze(1)  # (batch, channel, time, freq)
 
