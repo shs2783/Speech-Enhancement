@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from conv_stft import ConvSTFT, ConviSTFT
-from complex_nn import ComplexConv2d, ComplexConvTranspose2d, ComplexLinear, ComplexLSTM, ComplexBatchNorm2d, complex_concat
+from modules.complex_nn import ComplexConv2d, ComplexConvTranspose2d, ComplexLinear, ComplexLSTM, ComplexBatchNorm2d, complex_concat
 
 class ConvBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, padding=(0, 0), norm=True, act=True, causal=True, is_complex=True, **kwargs) -> None:

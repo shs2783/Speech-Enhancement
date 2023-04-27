@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from conv_stft import ConvSTFT, ConviSTFT
-from complex_nn import ComplexConv2d, ComplexConvTranspose2d, ComplexBatchNorm2d, ComplexLeakyReLU
+from modules.complex_nn import ComplexConv2d, ComplexConvTranspose2d, ComplexBatchNorm2d, ComplexLeakyReLU
 from architectures import dcunet_architecture
 
 class ConvBlock(nn.Module):
