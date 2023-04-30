@@ -80,15 +80,21 @@ class Decoder(nn.Module):
         return x
     
 class CRN(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, window_size=320, hop_size=160, fft_size=320) -> None:
         super().__init__()
-        
+
+        self.stft = ConvSTFT(window_size, hop_size, fft_size, return_mag_phase=True)
+        self.istft = ConviSTFT(window_size, hop_size, fft_size)
+
         self.encoder = Encoder()
         self.lstm_layers = nn.LSTM(input_size=1024, hidden_size=1024, num_layers=2, batch_first=True)
         self.decoder = Decoder()
         
     def forward(self, x):
-        x, encoder_outputs = self.encoder(x)
+        mag, phase = self.stft(x)  # (batch, freq, time)
+        mag = mag.transpose(1, 2).unsqueeze(1)  # (batch, channel, time, freq)
+
+        x, encoder_outputs = self.encoder(mag)
         batch, channel, time, freq = x.shape
         x = x.permute(0, 2, 1, 3).reshape(batch, time, channel*freq)
 
@@ -97,24 +103,18 @@ class CRN(nn.Module):
 
         x = self.decoder(x, encoder_outputs)
         x = F.softplus(x)
-        return x
+
+        clean_estimate_spec = x.squeeze(1).transpose(1, 2)  # (batch, freq, time)
+        clean_estimate_wav = self.istft(clean_estimate_spec, phase)
+        return clean_estimate_spec, clean_estimate_wav
     
 if __name__ == '__main__':
     window_size = 320
     hop_size = 160
     fft_size = 320  # inference from input size frequency 161
 
-    stft = ConvSTFT(window_size, hop_size, fft_size, return_mag_phase=True)
-    istft = ConviSTFT(window_size, hop_size, fft_size)
-    model = CRN()
+    model = CRN(window_size, hop_size, fft_size)
 
     signal = torch.randn(1, 32000)
-    mag, phase = stft(signal)  # (batch, freq, time)
-    mag = mag.transpose(1, 2).unsqueeze(1)  # (batch, channel, time, freq)
-
-    output = model(mag)  # (batch, channel, time, freq)
-    print(output.shape)
-
-    output = output.squeeze(1).transpose(1, 2)  # (batch, freq, time)
-    istft_signal = istft(output, phase)
-    print(istft_signal.shape)
+    clean_estimate_spec, clean_estimate_wav = model(signal)  # (batch, channel, time, freq)
+    print(clean_estimate_spec.shape, clean_estimate_wav.shape)
