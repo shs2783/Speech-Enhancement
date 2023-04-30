@@ -1,2 +1,9 @@
+# directory
 .idea/
 __pycache__/
+
+# wav file
+*.wav
+
+# checkpoint
+*.pt
