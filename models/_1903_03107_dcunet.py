@@ -136,16 +136,16 @@ class DCUNet(nn.Module):
         x = self.first_conv(x)
         x, encoder_outputs = self.encoder(x)
         x = self.decoder(x, encoder_outputs)
-        mask = self._mask_processing(x)
 
-        if identity.shape[2] != mask.shape[2]:
-            h_diff = abs(identity.shape[2] - mask.shape[2])
-            identity = identity[:, :, :-h_diff, :]
-        if identity.shape[3] != mask.shape[3]:
-            w_diff = abs(identity.shape[3] - mask.shape[3])
-            identity = identity[:, :, :, :-w_diff]
+        ### mask processing
+        if x.shape[2] != identity.shape[2]:
+            h_diff = abs(x.shape[2] - identity.shape[2])
+            x = x[:, :, :-h_diff, :]
+        if x.shape[3] != identity.shape[3]:
+            w_diff = abs(x.shape[3] - identity.shape[3])
+            x = x[:, :, :, :-w_diff]
 
-        clean_estimate_spec = identity * mask
+        clean_estimate_spec = self._mask_processing(x, identity)
 
         ### istft
         batch, complex_channel, freq, time = clean_estimate_spec.shape
@@ -155,17 +155,38 @@ class DCUNet(nn.Module):
         clean_estimate_wav = torch.clamp_(clean_estimate_wav, -1, 1)
         return clean_estimate_spec, clean_estimate_wav
 
-    def _mask_processing(self, x, eps=1e-8, method='bounded_tanh'):
+    def _mask_processing(self, x, noisy_spec, method='bounded_tanh'):
         if method == 'unbounded':
             mask = x
+            clean_estimate_spec = noisy_spec * mask
+
         elif method == 'bounded_sigmoid':
             mask = torch.sigmoid(x)
-        elif method == 'bounded_tanh':
-            mask_mag = torch.sqrt(torch.sum(x**2, dim=1, keepdim=True) + eps)
-            mask_phase = x / mask_mag
-            mask = mask_mag * mask_phase * torch.tanh(mask_mag)
+            clean_estimate_spec = noisy_spec * mask
 
-        return mask
+        elif method == 'bounded_tanh':
+            mask_real = x[:, 0]
+            mask_imag = x[:, 1]
+
+            noisy_real = noisy_spec[:, 0]
+            noisy_imag = noisy_spec[:, 1]
+
+            mask_mag, mask_phase = self._return_mag_phase(mask_real, mask_imag)
+            noisy_mag, noisy_phase = self._return_mag_phase(noisy_real, noisy_imag)
+
+            mask_phase = mask_phase / mask_mag
+            mask_mag = torch.tanh(mask_mag)
+
+            real = noisy_mag * mask_mag * torch.cos(noisy_phase + mask_phase)
+            imag = noisy_mag * mask_mag * torch.sin(noisy_phase + mask_phase)
+            clean_estimate_spec = torch.stack([real, imag], dim=1)
+
+        return clean_estimate_spec
+
+    def _return_mag_phase(self, real, imag, eps=1e-8):
+        mag = torch.sqrt(real**2 + imag**2 + eps)
+        phase = torch.atan2(imag, real)
+        return mag, phase
 
 if __name__ == '__main__':
     window_size = 1024  # 16000Hz * 0.064s (=64ms) in paper
