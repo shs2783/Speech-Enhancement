@@ -10,62 +10,59 @@ from audio_dataloader import AudioDataLoader
 from models import GCARN
 from trainer import Trainer
 
-from utils import get_logger
-from multiprocessing import cpu_count
+from hparams import HyperParams, OptimizerHparams, SchedulerHparams
+from utils import get_logger, split_dataset_index
 
 def main():
     gpu_id = (0, )
-    num_cpu = cpu_count()
     logger = get_logger(__name__)
+    hparams = HyperParams()
 
     ### model
     logger.info('Building the model')
-    # model = DCUNet('dcunet20-large')
-    model = GCARN(window_size=512, hop_size=256, fft_size=512, lstm_channels=512)
+    model = GCARN(window_size=hparams.window_size, hop_size=hparams.hop_size, fft_size=hparams.fft_size, lstm_channels=hparams.lstm_channels)
 
     ### optimizer
-    optimizer_kwargs = {
-        'lr': 1e-3,
-        'betas': (0.9, 0.999),
-        'eps': 1e-8,
-        'weight_decay': 0,
-        'amsgrad': False,
-    }
-
-    logger.info("Create optimizer {0}: {1}".format('Adam', optimizer_kwargs))
+    optimizer_kwargs = OptimizerHparams.adam(lr=hparams.lr)
     optimizer = torch.optim.Adam(model.parameters(), **optimizer_kwargs)
+    logger.info("Create optimizer {0}: {1}".format('Adam', optimizer_kwargs))
 
     ### scheduler
-    scheduler_kwargs = {
-        'mode': 'min',
-        'factor': 0.1,
-        'patience': 5,
-        'min_lr': 1e-5,
-        'verbose': True,
-    }
-
+    scheduler_kwargs = SchedulerHparams.reduce_lr_on_plateau(patience=5, min_lr=1e-5)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, **scheduler_kwargs)
-    # scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=h.lr_decay, last_epoch=last_epoch)
+    logger.info("Create scheduler {0}: {1}".format('ReduceLROnPlateau', scheduler_kwargs))
 
     ### trainer
     logger.info('Building the trainer')
-    trainer = Trainer(model, optimizer, scheduler, gpu_id=gpu_id, load_checkpoint=None, num_epochs=100)
+    trainer = Trainer(hparams, model, optimizer, scheduler, gpu_id=gpu_id)
+
+    ### dataset
+    logger.info('Making the train and test data loader')
+
+    dataset = TrainAudioDatasets(hparams.mix_audio_path, hparams.split_audio_path, sr=hparams.sr, k=hparams.k)
+    train_idx, val_idx = split_dataset_index(len(dataset), split_ratio=0.8, shuffle=True)
+
+    train_dataset = torch.utils.data.Subset(dataset, train_idx)
+    val_dataset = torch.utils.data.Subset(dataset, val_idx)
 
     ### data loader
-    logger.info('Making the train and test data loader')
-    train_mix_audio_path = 'synth/mix'
-    train_split_audio_path = ['synth/clean', 'synth/noise']
-
-    val_mix_audio_path = 'synth/mix'
-    val_split_audio_path = ['synth/clean', 'synth/noise']
-
-    train_dataset = TrainAudioDatasets(train_mix_audio_path, train_split_audio_path, sr=16000)
-    val_dataset = TrainAudioDatasets(val_mix_audio_path, val_split_audio_path, sr=16000)
-
     train_sampler = DistributedSampler(train_dataset) if len(gpu_id) > 1 else None
+    train_loader = AudioDataLoader(train_dataset,
+                                   chunk_size=hparams.chunk_size,
+                                   batch_size=hparams.batch_size,
+                                   pin_memory=hparams.pin_memory,
+                                   num_workers=hparams.num_workers,
+                                   shuffle=True,
+                                   drop_last=True,
+                                   sampler=train_sampler)
 
-    train_loader = AudioDataLoader(train_dataset, chunk_size=32000, batch_size=8, pin_memory=True, num_workers=num_cpu//2, shuffle=True, drop_last=True, sampler=train_sampler)
-    val_loader = AudioDataLoader(val_dataset, chunk_size=32000, batch_size=8, pin_memory=True, num_workers=num_cpu//2, shuffle=False, drop_last=False)
+    val_loader = AudioDataLoader(val_dataset,
+                                 chunk_size=hparams.chunk_size,
+                                 batch_size=hparams.batch_size,
+                                 pin_memory=hparams.pin_memory,
+                                 num_workers=hparams.num_workers,
+                                 shuffle=False,
+                                 drop_last=False)
 
     trainer.run(train_loader, val_loader, train_sampler)
 

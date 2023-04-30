@@ -16,29 +16,18 @@ from utils import get_logger, show_params
 
 
 class Trainer:
-    def __init__(self,
-                 model,
-                 optimizer,
-                 scheduler=None,
-                 gpu_id=0,
-                 patient=5,
-                 num_epochs=100,
-                 clip_norm=None,
-                 save_checkpoint="checkpoint",
-                 load_checkpoint=None,
-                 ):
+    def __init__(self, hparams, model, optimizer, scheduler, gpu_id=0):
 
-        self.gpu_id = gpu_id
-        self.num_epochs = num_epochs
-        self.checkpoint = save_checkpoint
-        self.clip_norm = clip_norm
-        self.patient = patient
-        self.best_loss = 1e10
-        self.current_epoch = 0
-        self.no_improvement = 0
-
+        ### hyper parameters
+        for attr in hparams.__dir__():
+            if not attr.startswith("__"):
+                value = getattr(hparams, attr)
+        
+                if not callable(value):
+                    setattr(self, attr, value)
+        
         ### build the logger object
-        self.logger = get_logger(save_checkpoint + "/trainer.log", file=False)
+        self.logger = get_logger(self.checkpoint + "/trainer.log", file=False)
 
         ### GPU
         if not torch.cuda.is_available():
@@ -46,6 +35,7 @@ class Trainer:
         if not isinstance(gpu_id, (tuple, list)):
             gpu_id = (gpu_id, )
 
+        self.gpu_id = gpu_id
         self.device = torch.device("cuda:{}".format(gpu_id[0]))
         self.logger.info("Trainer prepared on {}".format(self.device))
 
@@ -64,22 +54,22 @@ class Trainer:
         num_params = show_params(self.model)
 
         ### Whether to resume the model
-        if load_checkpoint:
-            if not os.path.exists(load_checkpoint):
-                raise FileNotFoundError("Could not find resume checkpoint: {}".format(load_checkpoint))
+        if self.load_model_path:
+            if not os.path.exists(self.load_model_path):
+                raise FileNotFoundError("Could not find resume checkpoint: {}".format(self.load_model_path))
 
-            state_dict = torch.load(load_checkpoint)
+            state_dict = torch.load(self.load_model_path, map_location=self.device)
             self.best_loss = state_dict['best_loss']
             self.current_epoch = state_dict['epoch'] + 1
 
             self.model.load_state_dict(state_dict['model'])
             self.optimizer.load_state_dict(state_dict['optimizer'])
-            self.logger.info(f"Resume from checkpoint {load_checkpoint}: epoch {self.current_epoch}")
+            self.logger.info(f"Resume from checkpoint {self.load_model_path}: epoch {self.current_epoch}")
 
         ### mkdir save checkpoint
-        if save_checkpoint:
-            os.makedirs(save_checkpoint, exist_ok=True)
-            self.checkpoint = Path(save_checkpoint)
+        if self.checkpoint:
+            os.makedirs(self.checkpoint, exist_ok=True)
+            self.checkpoint = Path(self.checkpoint)
 
     def learn(self, dataloader, is_val=False):
         start = time.time()
@@ -196,7 +186,7 @@ class Trainer:
             self.save_checkpoint(best=False)
 
             # early stopping
-            if self.no_improvement == self.patient:
+            if self.no_improvement == self.patience:
                 self.logger.info(f"Stop training cause no impr for {self.no_improvement} epochs")
                 break
 
@@ -251,6 +241,7 @@ class Trainer:
 
     def save_checkpoint(self, best=True):
         state_dict = {
+            "best_loss": self.best_loss,
             "epoch": self.current_epoch,
             "optimizer": self.optimizer.state_dict()
         }
@@ -260,6 +251,7 @@ class Trainer:
         else:
             state_dict["model"] = self.model.state_dict()
 
-        torch.save(state_dict,
-            self.checkpoint / "{}.pt".format("best" if best else "last")
+        torch.save(
+            state_dict,
+            self.checkpoint / '{}.pt'.format("best_model" if best else "last_model")
         )
