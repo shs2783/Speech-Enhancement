@@ -187,7 +187,7 @@ class Trainer:
 
             # early stopping
             if self.no_improvement == self.patience:
-                self.logger.info(f"Stop training cause no impr for {self.no_improvement} epochs")
+                self.logger.info(f"Stop training cause no improvement for {self.no_improvement} epochs")
                 break
 
         self.logger.info(f"Training for {self.current_epoch} /{self.num_epochs} epoches done!".format)

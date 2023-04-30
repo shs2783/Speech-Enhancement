@@ -31,7 +31,7 @@ class HyperParams:
 
     # checkpoint dir
     checkpoint = 'checkpoint'
-    load_model_path = 'checkpoint/best_model.pt'
+    load_model_path = None
 
 
 class OptimizerHparams:

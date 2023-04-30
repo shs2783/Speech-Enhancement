@@ -39,7 +39,6 @@ class ConvSTFT(nn.Module):
         # self.weight = nn.Parameter(kernel, requires_grad=(not fix))
         self.register_buffer('weight', kernel)
 
-        self.fft_size = self.fft_size
         self.hop_size = hop_size
         self.window_size = window_size
         self.center = center
@@ -82,7 +81,6 @@ class ConviSTFT(nn.Module):
         self.register_buffer('window', window)
         self.register_buffer('enframe', torch.eye(window_size)[:, None, :])
 
-        self.fft_size = self.fft_size
         self.hop_size = hop_size
         self.window_size = window_size
         self.center = center
