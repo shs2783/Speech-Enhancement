@@ -27,7 +27,7 @@ class Trainer:
                     setattr(self, attr, value)
         
         ### build the logger object
-        self.logger = get_logger(self.checkpoint + "/trainer.log", file=False)
+        self.logger = get_logger(self.checkpoint_dir + "trainer.log", file=False)
 
         ### GPU
         if not torch.cuda.is_available():
@@ -67,9 +67,9 @@ class Trainer:
             self.logger.info(f"Resume from checkpoint {self.load_model_path}: epoch {self.current_epoch}")
 
         ### mkdir save checkpoint
-        if self.checkpoint:
-            os.makedirs(self.checkpoint, exist_ok=True)
-            self.checkpoint = Path(self.checkpoint)
+        if self.checkpoint_dir:
+            os.makedirs(self.checkpoint_dir, exist_ok=True)
+            self.checkpoint_dir = Path(self.checkpoint_dir)
 
     def learn(self, dataloader, is_val=False):
         start = time.time()
@@ -253,5 +253,5 @@ class Trainer:
 
         torch.save(
             state_dict,
-            self.checkpoint / '{}.pt'.format("best_model" if best else "last_model")
+            self.checkpoint_dir / '{}.pt'.format("best_model" if best else "last_model")
         )
