@@ -12,12 +12,11 @@ import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
 
 from losses import *
-from utils import get_logger, show_params
+from utils import get_logger
 
 
 class Trainer:
     def __init__(self, hparams, model, optimizer, scheduler, gpu_id=0):
-
         ### hyper parameters
         for attr in hparams.__dir__():
             if not attr.startswith("__"):
@@ -49,9 +48,6 @@ class Trainer:
         if len(gpu_id) > 1:
             self.model = DistributedDataParallel(self.model, device_ids=gpu_id, output_device=gpu_id[0])
             self.logger.info("Using DistributedDataParallel")
-
-        ### check model parameters
-        num_params = show_params(self.model)
 
         ### Whether to resume the model
         if self.load_model_path:
