@@ -28,12 +28,17 @@ class ChannelAttention(nn.Module):
     def __init__(self, feature_map_channels, r=16) -> None:
         super().__init__()
 
+        if feature_map_channels // r == 0:
+            reduction_channels = 2
+        else:
+            reduction_channels = feature_map_channels // r
+            
         self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.max_pool = nn.AdaptiveMaxPool2d((1, 1))
         
         self.shared_fc_layer = nn.Sequential(
-            LinearBlock(feature_map_channels, feature_map_channels // r, act=True, bias=False),
-            LinearBlock(feature_map_channels//r, feature_map_channels, act=False, bias=False)
+            LinearBlock(feature_map_channels, reduction_channels, act=True, bias=False),
+            LinearBlock(reduction_channels, feature_map_channels, act=False, bias=False)
         )
 
     def forward(self, x):
