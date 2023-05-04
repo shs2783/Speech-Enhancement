@@ -1,8 +1,8 @@
 import os
 import logging
 
-import numpy as np
 import torchaudio
+import numpy as np
 
 def get_logger(name,
                format_str="%(asctime)s [%(pathname)s:%(lineno)s - %(levelname)s ] %(message)s",
@@ -49,11 +49,13 @@ def inspect_file(path):
     print(f" - {torchaudio.info(path)}")
     print()
 
-def split_dataset_index(len_dataset, split_ratio=0.8, shuffle=True):
+def train_test_split(len_dataset, train_ratio=0.8, shuffle=True):
     indices = list(range(len_dataset))
+
     if shuffle:
         np.random.shuffle(indices)
 
-    split = int(split_ratio * len_dataset)
+    split = int(train_ratio * len_dataset)
     train_idx, test_idx = indices[:split], indices[split:]
+
     return train_idx, test_idx

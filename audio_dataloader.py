@@ -7,11 +7,8 @@ from audio_dataset import TrainAudioDatasets
 
 class AudioSpliter:
     '''
-       Split the audio. All audio is divided 
-       into 4s according to the requirements in the paper.
-       input:
-             chunk_size: split size
-             least: Less than this value will not be read
+      chunk_size (int): split audio size (default: 32000)
+      least_samples (int): Less than this value will not be read (default: 16000)
     '''
 
     def __init__(self, chunk_size=32000, least_samples=16000):
@@ -54,22 +51,19 @@ class AudioSpliter:
 
 class AudioDataLoader:
     '''
-        Custom dataloader method
-        input:
-              dataset (Dataset): dataset from which to load the data.
-              batch_size (int, optional): how many samples per batch to load
-              chunk_size (int, optional): split audio size (default: 32000(4s))
-              num_workers (int, optional): how many subprocesses to use for data (default: 4)
+      dataset (Dataset): dataset from which to load the data.
+      chunk_size (int): split audio size (default: 32000)
+      least_samples (int): Less than this value will not be read (default: 16000)
     '''
 
-    def __init__(self, dataset, batch_size=16, chunk_size=32000, **kwargs):
+    def __init__(self, dataset, chunk_size=32000, least_samples=16000, **kwargs):
         super(AudioDataLoader, self).__init__()
 
         self.dataset = dataset
-        self.batch_size = batch_size
+        self.batch_size = kwargs['batch_size']
 
-        self.data_loader = DataLoader(dataset, batch_size=batch_size, collate_fn=self._collate, **kwargs)
-        self.spliter = AudioSpliter(chunk_size=chunk_size, least_samples=chunk_size//2)
+        self.data_loader = DataLoader(dataset, collate_fn=self._collate, **kwargs)
+        self.spliter = AudioSpliter(chunk_size, least_samples)
 
     def _collate(self, batches):
         batch_list = []

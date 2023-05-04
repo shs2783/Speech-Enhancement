@@ -26,10 +26,10 @@ class Trainer:
         for attr in hparams.__dir__():
             if not attr.startswith("__"):
                 value = getattr(hparams, attr)
-        
+
                 if not callable(value):
                     setattr(self, attr, value)
-        
+
         ### build the logger object
         self.logger = get_logger(self.checkpoint_dir + "trainer.log", file=False)
 
@@ -44,7 +44,7 @@ class Trainer:
         self.logger.info("Trainer prepared on {}".format(self.device))
 
         ### model and optimizer and scheduler
-        self.logger.info("Loading model to GPUs:{}".format(gpu_id))
+        self.logger.info("Loading model to GPUs: {}".format(gpu_id))
         self.model = model.to(self.device)
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -218,15 +218,6 @@ class Trainer:
 
         return estimate_wav
 
-    def save_wav_file(self, wav, save_dir, current_step=0, sr=16000):
-        os.makedirs(save_dir, exist_ok=True)
-
-        if wav.dim() == 1:
-            wav = wav.unsqueeze(0)
-
-        save_dir = os.path.join(save_dir, f'epoch{self.current_epoch}_step{current_step}.wav')
-        torchaudio.save(save_dir, wav, sr)
-
     def plot_loss_image(self, train_losses, val_losses, save=False):
         plt.title("Loss of train and test")
         plt.plot(train_losses, 'b-', label=u'train_loss', linewidth=0.8)
@@ -239,6 +230,15 @@ class Trainer:
         if save:
             plt.savefig('model_loss.png')
         plt.show()
+
+    def save_wav_file(self, wav, save_dir, current_step=0, sr=16000):
+        os.makedirs(save_dir, exist_ok=True)
+
+        if wav.dim() == 1:
+            wav = wav.unsqueeze(0)
+
+        save_dir = os.path.join(save_dir, f'epoch{self.current_epoch}_step{current_step}.wav')
+        torchaudio.save(save_dir, wav, sr)
 
     def save_checkpoint(self, best=True):
         state_dict = {
