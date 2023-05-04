@@ -18,11 +18,11 @@ def complex_concat(inputs, dim=1):
 def split_complex(x, dim=1):
     '''return real and imag part of input'''
 
-    if torch.is_complex(x):             # (batch, complex channels, height, width)
-        real, imag = x.real, x.imag
-    elif isinstance(x, (tuple, list)):  # [real tensor, imag tensor]  ## tensor shape = (batch, channels, height, width)
+    if isinstance(x, (tuple, list)):   # [real tensor, imag tensor]  ## tensor shape = (batch, channels, height, width)
         real, imag = x
-    elif isinstance(x, torch.Tensor):   # (batch, real + imag channels, height, width)
+    elif torch.is_complex(x):          # (batch, complex channels, height, width)
+        real, imag = x.real, x.imag
+    elif isinstance(x, torch.Tensor):  # (batch, real + imag channels, height, width)
         real, imag = torch.chunk(x, 2, dim=dim)
     else:
         raise ValueError("Input must be a complex tensor or a tuple of real and imaginary tensors")
@@ -34,10 +34,10 @@ def merge_real_imag(x, real, imag, dim=1):
 
     if isinstance(x, (tuple, list)):
         output = [real, imag]
-    elif isinstance(x, torch.Tensor):
-        output = torch.cat([real, imag], dim=dim)
     elif torch.is_complex(x):
         output = torch.complex(real, imag)
+    elif isinstance(x, torch.Tensor):
+        output = torch.cat([real, imag], dim=dim)
     
     return output
     
