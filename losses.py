@@ -1,5 +1,5 @@
 import torch
-import torch.nn as nn
+import torch.nn.functional as F
 
 def SDR_loss(estimate, target):
     '''
@@ -53,7 +53,7 @@ def Weighted_SDR_loss(noisy_signal, estimate, target):
 
 def SI_SNR_loss(estimate, target, zero_mean=False):
     '''
-    output: (batch_size, signal_length)
+    estimate: (batch_size, signal_length)
     target: (batch_size, signal_length)
     '''
 
@@ -75,12 +75,36 @@ def SI_SNR_loss(estimate, target, zero_mean=False):
     snr = 10 * torch.log10(s_target_norm_squared / e_noise_norm_squared)
     return -torch.mean(snr)
 
-if __name__ == '__main__':
-    x = torch.randn(2, 10)
-    x1 = torch.randn(2, 10)
-    x2 = torch.randn(2, 10)
+def mask_loss(mask, x, y):
+    '''
+    mask : estimate mask (batch_size, freq, time)
+    x : noisy spectrogram (batch_size, freq, time)
+    y : clean spectrogram (batch_size, freq, time)
+    '''
+    
+    x_real, x_imag = torch.chunk(x, 2, dim=1)
+    y_real, y_imag = torch.chunk(y, 2, dim=1)
+    
+    ground_mask_real = (x_real * y_real + x_imag * y_imag) / (x_real**2 + x_imag**2)
+    ground_mask_imag = (x_real * y_imag - x_imag * y_real) / (x_real**2 + x_imag**2)
+    ground_mask = torch.cat([ground_mask_real, ground_mask_imag], dim=1)
+    
+    loss = F.mse_loss(mask, ground_mask)
+    return loss
 
-    si_snr = SI_SNR_loss(x1, x2)
-    sdr1 = SDR_loss(x1, x2)
-    weighted_sdr = Weighted_SDR_loss(x, x1, x2)
-    print(si_snr, sdr1, weighted_sdr)
+if __name__ == '__main__':
+    noisy = torch.randn(2, 16000)
+    clean = torch.randn(2, 16000)
+    estimate = torch.randn(2, 16000)
+
+    si_snr = SI_SNR_loss(estimate, clean)
+    sdr1 = SDR_loss(estimate, clean)
+    sdr2 = SDR_loss2(estimate, clean)
+    weighted_sdr = Weighted_SDR_loss(noisy, estimate, clean)
+    print(si_snr, sdr1, sdr2, weighted_sdr)
+    
+    mask = torch.randn(2, 64, 10)
+    noisy_spec = torch.randn(2, 64, 10)
+    clean_spec = torch.randn(2, 64, 10)
+    loss = mask_loss(mask, noisy_spec, clean_spec)
+    print(loss)
