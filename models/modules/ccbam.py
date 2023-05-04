@@ -94,7 +94,7 @@ class CCBAM(nn.Module):
     
     def forward(self, x):
         channel_attention = self.channel_attention_branch(x)  # (batch_size, channels, 1, 1)
-        x *= channel_attention  # broadcast operation
+        x = x * channel_attention  # broadcast operation
         
         spatial_attention = self.spatial_attention_branch(x)  # (batch_size, 2, height, width)  ## 2 = (real, imag)
         

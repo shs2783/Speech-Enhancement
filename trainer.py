@@ -8,6 +8,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 import torchaudio
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
 
@@ -18,6 +19,10 @@ from utils import get_logger
 class Trainer:
     def __init__(self, hparams, model, optimizer, scheduler, gpu_id=0):
         ### hyper parameters
+        self.current_epoch = 0
+        self.no_improvement = 0
+        self.best_loss = 1e10
+        
         for attr in hparams.__dir__():
             if not attr.startswith("__"):
                 value = getattr(hparams, attr)
