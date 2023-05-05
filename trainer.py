@@ -9,11 +9,10 @@ import matplotlib.pyplot as plt
 
 import torchaudio
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
 
 from losses import *
-from utils import get_logger
+from utils import get_logger, reshape_wav_to_mono, pad_or_truncate_wav
 
 
 class Trainer:
@@ -21,8 +20,9 @@ class Trainer:
         ### hyper parameters
         self.current_epoch = 0
         self.no_improvement = 0
+        self.best_accuracy = 0
         self.best_loss = 1e10
-        
+
         for attr in hparams.__dir__():
             if not attr.startswith("__"):
                 value = getattr(hparams, attr)
@@ -60,23 +60,35 @@ class Trainer:
                 raise FileNotFoundError("Could not find resume checkpoint: {}".format(self.load_model_path))
 
             state_dict = torch.load(self.load_model_path, map_location=self.device)
+            self.current_epoch = state_dict['epoch']
             self.best_loss = state_dict['best_loss']
-            self.current_epoch = state_dict['epoch'] + 1
+            self.best_accuracy = state_dict['best_accuracy']
 
             self.model.load_state_dict(state_dict['model'])
             self.optimizer.load_state_dict(state_dict['optimizer'])
-            self.logger.info(f"Resume from checkpoint {self.load_model_path}: epoch {self.current_epoch}")
+            self.logger.info(f"Resume from checkpoint {self.load_model_path}")
 
         ### mkdir save checkpoint
         if self.checkpoint_dir:
             os.makedirs(self.checkpoint_dir, exist_ok=True)
             self.checkpoint_dir = Path(self.checkpoint_dir)
 
-    def learn(self, dataloader, is_val=False):
+    def predict(self, mix_wav, is_train):
+        if is_train:
+            estimate_clean_spec, estimate_clean_wav = self.model(mix_wav)
+        else:
+            with torch.no_grad():
+                estimate_clean_spec, estimate_clean_wav = self.model(mix_wav)
+
+        return estimate_clean_spec, estimate_clean_wav
+
+    def learn(self, dataloader, is_train=True):
         start = time.time()
         current_step = 0
         total_loss = 0
+        total_accuracy = 0
 
+        train_or_val = 'Training' if is_train else 'Validation'
         pbar = tqdm(dataloader, total=len(dataloader) // dataloader.batch_size)
         for datas in pbar:
             current_step += 1
@@ -87,95 +99,94 @@ class Trainer:
             target_noise_wav = datas['ref'][1].to(self.device)
 
             # estimate clean wav
-            if is_val:
-                with torch.no_grad():
-                    estimate_clean_spec, estimate_clean_wav = self.model(mix_wav)
-            else:
-                estimate_clean_spec, estimate_clean_wav = self.model(mix_wav)
+            estimate_clean_spec, estimate_clean_wav = self.predict(mix_wav, is_train)
 
-            # reshape to 2D
-            if estimate_clean_wav.dim() == 3:
-                batch, channel, length = estimate_clean_wav.size()
-                estimate_clean_wav = estimate_clean_wav.view(batch*channel, length)
-            if target_clean_wav.dim() == 3:
-                batch, channel, length = target_clean_wav.size()
-                target_clean_wav = target_clean_wav.view(batch*channel, length)
+            # reshape wav
+            estimate_clean_wav = reshape_wav_to_mono(estimate_clean_wav)
+            target_clean_wav = reshape_wav_to_mono(target_clean_wav)
 
-            # pad or truncate
-            estimate_clean_wav = self.pad_or_truncate_wav(estimate_clean_wav, target_clean_wav)
+            # pad or truncate wav
+            estimate_clean_wav = pad_or_truncate_wav(estimate_clean_wav, target_clean_wav)
 
             # calculate loss
-            self.optimizer.zero_grad()
             loss = SI_SNR_loss(estimate_clean_wav, target_clean_wav)
-            loss.requires_grad_(True)
-            loss.backward()
-
-            # update parameters
-            if self.clip_norm:
-                nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_norm)
-            self.optimizer.step()
-
-            # total loss and avg loss
             total_loss += loss.item()
             avg_loss = total_loss / current_step
+            
+            # calculate_accuracy
+            accuracy = 0
+            total_accuracy += accuracy
+            avg_accuracy = total_accuracy / current_step
+            
+            # back propagation
+            self._update_parameters(loss, is_train)
 
-            pbar.set_description('<epoch:{:3d}, iter:{:d}, lr:{:.3e}, loss:{:.3f}> '.format(
-                self.current_epoch, current_step, self.optimizer.param_groups[0]['lr'], avg_loss))
+            pbar.set_description('< {} epoch:{:3d}, iter: {:d}, lr: {:.3e}, loss: {:.4f}, accuracy: {:.4f} > '.format(
+                train_or_val, self.current_epoch, current_step, self.optimizer.param_groups[0]['lr'], avg_loss, avg_accuracy))
 
             # gc.collect()
             # torch.cuda.empty_cache()
 
         pbar.close()
         end = time.time()
-        total_avg_loss = total_loss / current_step
-        self.logger.info('<epoch:{:3d}, lr:{:.3e}, loss:{:.3f}, Total time:{:.3f} min> '.format(
-            self.current_epoch, self.optimizer.param_groups[0]['lr'], total_avg_loss, (end - start) / 60))
 
-        if not is_val:
+        avg_loss = total_loss / current_step
+        avg_accuracy = total_accuracy / current_step
+
+        self.logger.info('{} epoch {} done, Total time: {:.1f} min'.format(
+            train_or_val, self.current_epoch, (end - start) / 60))
+
+        if is_train:
             self.save_wav_file(mix_wav[0].cpu(), 'train_result/mix', current_step)
             self.save_wav_file(target_clean_wav[0].cpu(), 'train_result/ground_clean', current_step)
             self.save_wav_file(target_noise_wav[0].cpu(), 'train_result/ground_noise', current_step)
             self.save_wav_file(estimate_clean_wav[0].detach().cpu(), 'train_result/output_clean', current_step)
 
-        return total_avg_loss
+        return avg_loss, avg_accuracy
 
     def train(self, train_dataloader):
         self.logger.info('Training model ......')
         self.model.train()
 
-        train_loss = self.learn(train_dataloader)
-        return train_loss
+        train_loss, train_accuracy = self.learn(train_dataloader, is_train=True)
+        return train_loss, train_accuracy
 
     def val(self, val_dataloader):
         self.logger.info('Validation model ......')
         self.model.eval()
 
-        val_loss = self.learn(val_dataloader, is_val=True)
-        return val_loss
+        val_loss, val_accuracy = self.learn(val_dataloader, is_train=False)
+        return val_loss, val_accuracy
 
     def run(self, train_dataloader, val_dataloader, train_sampler=None):
         self.logger.info(f"Starting epoch from {self.current_epoch}")
 
-        train_losses = []
-        val_losses = []
+        self.train_loss_list = []
+        self.train_accuracy_list = []
+        self.val_loss_list = []
+        self.val_accuracy_list = []
 
         while self.current_epoch < self.num_epochs:
             self.current_epoch += 1
+            print()
 
             # set epoch for distributed sampler
             if len(self.gpu_id) > 1:
                 train_sampler.set_epoch(self.current_epoch)
 
             # train and valiadation
-            train_loss = self.train(train_dataloader)
-            val_loss = self.val(val_dataloader)
+            train_loss, train_accuracy = self.train(train_dataloader)
+            val_loss, val_accuracy = self.val(val_dataloader)
 
-            # save loss
-            train_losses.append(train_loss)
-            val_losses.append(val_loss)
+            # save loss and accuracy
+            self.train_loss_list.append(train_loss)
+            self.train_accuracy_list.append(train_accuracy)
+            self.val_loss_list.append(val_loss)
+            self.val_accuracy_list.append(val_accuracy)
 
-            # update best loss
+            # update best loss and accuracy
             self._update_best_loss(val_loss)
+            self._update_best_accuracy(val_accuracy)
 
             # step scheduler
             self.scheduler.step(val_loss)
@@ -191,40 +202,50 @@ class Trainer:
                 self.logger.info(f"Stop training cause no improvement for {self.no_improvement} epochs")
                 break
 
-        self.logger.info(f"Training for {self.current_epoch} /{self.num_epochs} epoches done!".format)
+        self.logger.info(f"Training for {self.current_epoch} / {self.num_epochs} epochs done!".format)
 
-        # loss image
-        self.plot_loss_image(train_losses, val_losses, save=False)
+        # plot image
+        self.plot_image(self.train_loss_list, self.val_loss_list, matrix='loss', save=False)
+        self.plot_image(self.train_accuracy_list, self.val_accuracy_list, matrix='accuracy', save=False)
+
+    def _update_parameters(self, loss, is_train):
+        if not is_train:
+            return
+
+        self.optimizer.zero_grad()
+        loss.requires_grad_(True)
+        loss.backward()
+
+        if self.clip_norm:
+            nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_norm)
+        self.optimizer.step()
 
     def _update_best_loss(self, val_loss):
+        if str(val_loss) in ['inf', '-inf', 'nan']:
+            import sys
+            sys.exit(f'loss is {val_loss}, stop training')
+
         if val_loss < self.best_loss:
             self.best_loss = val_loss
             self.no_improvement = 0
-            self.save_checkpoint(best=True)
-            self.logger.info(f'Epoch: {self.current_epoch}, now best loss change: {self.best_loss:.4f}')
+            self.save_checkpoint(best=True, matrix='loss')
+            self.logger.info(f'best loss updated! -> {self.best_loss:.4f}')
         else:
             self.no_improvement += 1
-            self.logger.info(f'no improvement, best loss: {self.scheduler.best:.4f}')
 
-    def pad_or_truncate_wav(self, estimate_wav, target_wav):
-        estimate_length = estimate_wav.shape[-1]
-        target_length = target_wav.shape[-1]
+    def _update_best_accuracy(self, val_accuracy):
+        if val_accuracy > self.best_accuracy:
+            self.best_accuracy = val_accuracy
+            self.save_checkpoint(best=True, matrix='accuracy')
+            self.logger.info(f'best accuracy updated! -> {self.best_accuracy:.4f}')
 
-        if estimate_length < target_length:
-            gap = target_length - estimate_length
-            estimate_wav = F.pad(estimate_wav, (0, gap))
-        elif estimate_length > target_length:
-            estimate_wav = estimate_wav[:, :target_length]
-
-        return estimate_wav
-
-    def plot_loss_image(self, train_losses, val_losses, save=False):
-        plt.title("Loss of train and test")
-        plt.plot(train_losses, 'b-', label=u'train_loss', linewidth=0.8)
-        plt.plot(val_losses, 'c-', label=u'val_loss', linewidth=0.8)
+    def plot_image(self, train_matrix, val_matrix, matrix='loss', save=False):
+        plt.title(f"{matrix} of train and validation")
+        plt.plot(train_matrix, 'b-', label=f'train_{matrix}', linewidth=0.8)
+        plt.plot(val_matrix, 'c-', label=f'val_{matrix}', linewidth=0.8)
 
         plt.xlabel('epoch')
-        plt.ylabel('loss')
+        plt.ylabel(matrix)
         plt.legend()
 
         if save:
@@ -240,10 +261,15 @@ class Trainer:
         save_dir = os.path.join(save_dir, f'epoch{self.current_epoch}_step{current_step}.wav')
         torchaudio.save(save_dir, wav, sr)
 
-    def save_checkpoint(self, best=True):
+    def save_checkpoint(self, best=True, matrix=''):
+        best_or_last = 'best' if best else 'last'
+        matrix = f'_{matrix}' if matrix else ''
+        file_name = f'{best_or_last}_model{matrix}.pt'
+
         state_dict = {
-            "best_loss": self.best_loss,
             "epoch": self.current_epoch,
+            "best_loss": self.best_loss,
+            "best_accuracy": self.best_accuracy,
             "optimizer": self.optimizer.state_dict()
         }
 
@@ -254,5 +280,5 @@ class Trainer:
 
         torch.save(
             state_dict,
-            self.checkpoint_dir / '{}.pt'.format("best_model" if best else "last_model")
+            self.checkpoint_dir / file_name
         )

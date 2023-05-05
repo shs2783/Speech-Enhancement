@@ -1,8 +1,10 @@
 import os
 import logging
 
-import torchaudio
 import numpy as np
+
+import torchaudio
+import torch.nn.functional as F
 
 def get_logger(name,
                format_str="%(asctime)s [%(pathname)s:%(lineno)s - %(levelname)s ] %(message)s",
@@ -59,3 +61,21 @@ def train_test_split(len_dataset, train_ratio=0.8, shuffle=True):
     train_idx, test_idx = indices[:split], indices[split:]
 
     return train_idx, test_idx
+
+def reshape_wav_to_mono(wav):
+    if wav.dim() == 3:
+        batch, channel, length = wav.size()
+        wav = wav.view(batch * channel, length)
+    return wav
+
+def pad_or_truncate_wav(estimate_wav, target_wav):
+    estimate_length = estimate_wav.shape[-1]
+    target_length = target_wav.shape[-1]
+
+    if estimate_length < target_length:
+        gap = target_length - estimate_length
+        estimate_wav = F.pad(estimate_wav, (0, gap))
+    elif estimate_length > target_length:
+        estimate_wav = estimate_wav[:, :target_length]
+
+    return estimate_wav
