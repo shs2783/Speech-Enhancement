@@ -11,7 +11,7 @@ from models import GCARN
 from trainer import Trainer
 
 from hparams import HyperParams
-from utils import get_logger, show_params, train_test_split
+from utils import get_logger, initialize_params, show_params, train_test_split
 
 def main():
     gpu_id = (0, )
@@ -21,6 +21,8 @@ def main():
     ### model
     logger.info('Building the model {}'.format(hparams.model))
     model = GCARN(**hparams.model)
+
+    initialize_params(model)
     num_params = show_params(model)
 
     ### optimizer

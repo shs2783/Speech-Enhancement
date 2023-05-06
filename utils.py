@@ -3,6 +3,7 @@ import logging
 
 import numpy as np
 
+import torch
 import torchaudio
 import torch.nn.functional as F
 
@@ -43,13 +44,44 @@ def show_params(model):
 
     return num_params
 
-def inspect_file(path):
-    print("-" * 10)
-    print("Source:", path)
-    print("-" * 10)
-    print(f" - File size: {os.path.getsize(path)} bytes")
-    print(f" - {torchaudio.info(path)}")
-    print()
+def initialize_params(model, nonlinearity='relu', weight_norm=True):
+    for module in model.modules():
+        if isinstance(module, (torch.nn.Conv1d, torch.nn.Conv2d)):
+            torch.nn.init.kaiming_normal_(module.weight.data, nonlinearity=nonlinearity)
+
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias.data)
+            if weight_norm:
+                torch.nn.utils.weight_norm(module)
+
+        elif isinstance(module, (torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d)):
+            torch.nn.init.kaiming_normal_(module.weight.data, nonlinearity=nonlinearity)
+
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias.data)
+            if weight_norm:
+                torch.nn.utils.weight_norm(module)
+
+        elif isinstance(module, torch.nn.Linear):
+            torch.nn.init.kaiming_normal_(module.weight.data, nonlinearity=nonlinearity)
+
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias.data)
+            if weight_norm:
+                torch.nn.utils.weight_norm(module)
+
+        elif isinstance(module, torch.nn.LSTM):
+            for name, param in module.named_parameters():
+                if 'weight_ih' in name:
+                    torch.nn.init.xavier_uniform_(param.data)
+                elif 'weight_hh' in name:
+                    torch.nn.init.orthogonal_(param.data)
+                elif 'bias' in name:
+                    torch.nn.init.zeros_(param.data)
+
+        elif isinstance(module, (torch.nn.BatchNorm1d, torch.nn.BatchNorm2d)):
+            torch.nn.init.constant_(module.weight.data, 1)
+            torch.nn.init.constant_(module.bias.data, 0)
 
 def train_test_split(len_dataset, train_ratio=0.8, shuffle=True):
     indices = list(range(len_dataset))
@@ -61,6 +93,14 @@ def train_test_split(len_dataset, train_ratio=0.8, shuffle=True):
     train_idx, test_idx = indices[:split], indices[split:]
 
     return train_idx, test_idx
+
+def inspect_file(path):
+    print("-" * 10)
+    print("Source:", path)
+    print("-" * 10)
+    print(f" - File size: {os.path.getsize(path)} bytes")
+    print(f" - {torchaudio.info(path)}")
+    print()
 
 def reshape_wav_to_mono(wav):
     if wav.dim() == 3:
