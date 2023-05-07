@@ -7,7 +7,7 @@ from torch.utils.data import DistributedSampler
 from audio_dataset import TrainAudioDatasets
 from audio_dataloader import AudioDataLoader
 
-from models import GCARN
+from models import FRCRN
 from trainer import Trainer
 
 from hparams import HyperParams
@@ -20,7 +20,7 @@ def main():
 
     ### model
     logger.info('Building the model {}'.format(hparams.model))
-    model = GCARN(**hparams.model)
+    model = FRCRN(**hparams.model)
 
     initialize_params(model)
     num_params = show_params(model)

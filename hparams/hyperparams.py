@@ -17,10 +17,10 @@ class HyperParams:
 
     # model
     model = {
-        'window_size': 512,
-        'hop_size': 256,
-        'fft_size': 512,
-        'lstm_channels': 512,
+        'window_size': 320,
+        'hop_size': 160,
+        'fft_size': 640,
+        'lstm_channels': 256,
     }
 
     # optimizer
