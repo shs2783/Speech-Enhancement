@@ -14,7 +14,7 @@ def SDR_loss(estimate, target, eps=1e-8):
     output_norm = output_norm ** 2 + eps
 
     sdr = 10 * torch.log10(target_norm / output_norm)
-    return torch.mean(sdr)
+    return -torch.mean(sdr)
 
 def SDR_loss2(estimate, target, eps=1e-8):
     '''
@@ -29,7 +29,7 @@ def SDR_loss2(estimate, target, eps=1e-8):
     output_norm = output_norm ** 2 + eps
 
     sdr = 10 * torch.log10(target_norm / output_norm)
-    return torch.mean(sdr)
+    return -torch.mean(sdr)
 
 def modified_SDR_loss(estimate, target):
     output_norm = torch.norm(estimate, dim=1)
@@ -66,8 +66,8 @@ def SI_SNR_loss(estimate, target, zero_mean=False, eps=1e-8):
     '''
 
     if zero_mean:
-        estimate -= torch.mean(estimate)
-        target -= torch.mean(target)
+        estimate = estimate - torch.mean(estimate, dim=1, keepdim=True)
+        target = target - torch.mean(target, dim=1, keepdim=True)
 
     target_norm = torch.norm(target, dim=1, keepdim=True)
     output_target_dot_product = torch.sum(estimate * target, dim=1, keepdim=True)
@@ -81,7 +81,7 @@ def SI_SNR_loss(estimate, target, zero_mean=False, eps=1e-8):
     e_noise_norm = e_noise_norm ** 2 + eps
 
     snr = 10 * torch.log10(s_target_norm / e_noise_norm)
-    return torch.mean(snr)
+    return -torch.mean(snr)
 
 def mask_loss(mask, x, y):
     '''

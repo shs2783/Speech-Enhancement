@@ -44,7 +44,7 @@ def show_params(model):
 
     return num_params
 
-def initialize_params(model, nonlinearity='relu', weight_norm=True):
+def initialize_params(model, nonlinearity='relu', weight_norm=False):
     for module in model.modules():
         if isinstance(module, (torch.nn.Conv1d, torch.nn.Conv2d)):
             torch.nn.init.kaiming_normal_(module.weight.data, nonlinearity=nonlinearity)
