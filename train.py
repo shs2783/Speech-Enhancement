@@ -14,7 +14,11 @@ from hparams import HyperParams
 from utils import get_logger, initialize_params, show_params, train_test_split
 
 def main():
-    gpu_id = (0, )
+    ### gpu
+    num_gpu = torch.cuda.device_count()
+    gpu_id = tuple(range(num_gpu))
+
+    ### logger and hyper parameters
     logger = get_logger(__name__)
     hparams = HyperParams()
 
@@ -22,16 +26,17 @@ def main():
     logger.info('Building the model {}'.format(hparams.model))
     model = FRCRN(**hparams.model)
 
-    initialize_params(model)
-    num_params = show_params(model)
-
     ### optimizer
     logger.info("Create optimizer {}".format(hparams.optimizer))
-    optimizer = torch.optim.Adam(model.parameters(), **hparams.optimizer)
+    optimizer = torch.optim.AdamW(model.parameters(), **hparams.optimizer)
 
     ### scheduler
     logger.info("Create scheduler {}".format(hparams.scheduler))
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, **hparams.scheduler)
+
+    ### initialize and show parameters
+    initialize_params(model)
+    show_params(model)
 
     ### dataset
     logger.info('Making the train and validation datasets')
@@ -45,7 +50,7 @@ def main():
     ### dataloader
     logger.info('Making the train and validation dataloader')
 
-    train_sampler = DistributedSampler(train_dataset) if len(gpu_id) > 1 else None
+    train_sampler = DistributedSampler(train_dataset) if num_gpu > 1 else None
     test_sampler = None
 
     train_loader = AudioDataLoader(train_dataset, sampler=train_sampler, **hparams.train_dataloader)

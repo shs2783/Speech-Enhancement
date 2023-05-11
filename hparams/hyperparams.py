@@ -4,11 +4,11 @@ from hparams.scheduler_hparams import SchedulerHparams
 
 class HyperParams:
     # training
-    batch_size = 16
+    batch_size = 8
     num_epochs = 100
     lr = 1e-3
-    patience = 10
     clip_norm = 0.5
+    patience = 10
     seed = 2023
 
     # checkpoint
@@ -35,7 +35,7 @@ class HyperParams:
         'min_lr': 1e-5,
     }
 
-    optimizer = OptimizerHparams.adam(**optimizer)
+    optimizer = OptimizerHparams.adamw(**optimizer)
     scheduler = SchedulerHparams.reduce_lr_on_plateau(**scheduler)
 
     # dataset

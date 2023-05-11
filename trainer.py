@@ -35,7 +35,7 @@ class Trainer:
 
         ### GPU
         if not torch.cuda.is_available():
-            raise RuntimeError("CUDA device unavailable... exist")
+            raise RuntimeError("GPU is not available.")
         if not isinstance(gpu_id, (tuple, list)):
             gpu_id = (gpu_id, )
 
@@ -66,6 +66,8 @@ class Trainer:
 
             self.model.load_state_dict(state_dict['model'])
             self.optimizer.load_state_dict(state_dict['optimizer'])
+
+            self.optimizer.zero_grad()
             self.logger.info(f"Resume from checkpoint {self.load_model_path}")
 
         ### mkdir save checkpoint
@@ -129,9 +131,6 @@ class Trainer:
 
         pbar.close()
         end = time.time()
-
-        avg_loss = total_loss / current_step
-        avg_accuracy = total_accuracy / current_step
 
         self.logger.info('{} epoch {} done, Total time: {:.1f} min'.format(
             train_or_val, self.current_epoch, (end - start) / 60))
@@ -212,13 +211,14 @@ class Trainer:
         if not is_train:
             return
 
-        self.optimizer.zero_grad()
         loss.requires_grad_(True)
         loss.backward()
 
         if self.clip_norm:
             nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_norm)
+
         self.optimizer.step()
+        self.optimizer.zero_grad()
 
     def _update_best_loss(self, val_loss):
         if str(val_loss) in ['inf', '-inf', 'nan']:
